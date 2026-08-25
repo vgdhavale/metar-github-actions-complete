@@ -1,0 +1,66 @@
+name: Update METAR maps
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: metar-maps
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgeos-dev libproj-dev proj-data proj-bin libgdal-dev
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt
+      - name: Validate syntax
+        run: python -m py_compile src/metar_maps.py
+      - name: Run METAR script
+        env:
+          MPLBACKEND: Agg
+        run: python src/metar_maps.py
+      - name: Verify generated files
+        run: |
+          test -s output/metar_dataframe.csv
+          for f in metar_station_observations.png metar_pressure_contours.png metar_temperature_contours.png metar_dewpoint_contours.png metar_wind_speed_barbs.png metar_visibility.png metar_current_weather.png; do test -s "output/$f"; done
+      - name: Build Pages site
+        run: |
+          mkdir -p public
+          cp output/* public/
+          cat > public/index.html <<'HTML'
+          <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Indian METAR maps</title><style>body{font-family:Arial;max-width:1400px;margin:2rem auto;padding:0 1rem;background:#f5f5f5}.map{background:white;margin:1rem 0;padding:1rem;box-shadow:0 1px 5px #bbb}img{max-width:100%;height:auto}</style></head><body><h1>Indian METAR maps</h1><p>Updated every 30 minutes.</p><script>const a=[['Station observations','metar_station_observations.png'],['Pressure','metar_pressure_contours.png'],['Temperature','metar_temperature_contours.png'],['Dew point','metar_dewpoint_contours.png'],['Wind','metar_wind_speed_barbs.png'],['Visibility','metar_visibility.png'],['Current weather','metar_current_weather.png']];document.write(a.map(x=>`<section class="map"><h2>${x[0]}</h2><img src="${x[1]}" alt="${x[0]}"></section>`).join(''));</script></body></html>
+          HTML
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+  deploy:
+    needs: generate
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
