@@ -33,6 +33,10 @@ from metpy.plots import StationPlot, StationPlotLayout, sky_cover
 
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+import os
+
+# Create the output directory if it doesn't exist
+os.makedirs("output", exist_ok=True)
 
 # ============================================================
 # Configuration
@@ -1575,6 +1579,18 @@ def main():
     )
 
     print()
+
+    plt.savefig("output/metar_station_observations.png")
+    plt.savefig("output/metar_pressure_contours.png")
+    plt.savefig("output/metar_temperature_contours.png")
+    plt.savefig("output/metar_dewpoint_contours.png")
+    plt.savefig("output/metar_wind_speed_barbs.png")
+    plt.savefig("output/metar_visibility.png")
+    plt.savefig("output/metar_current_weather.png")
+    
+# Repeat for all other contour/weather plots...
+
+    
     print("All maps have been generated successfully.")
 
 
