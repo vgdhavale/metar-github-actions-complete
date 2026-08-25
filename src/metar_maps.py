@@ -34,12 +34,6 @@ from metpy.plots import StationPlot, StationPlotLayout, sky_cover
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
-from pathlib import Path
-OUTPUT_DIR = Path("output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-OUTPUT_CSV = OUTPUT_DIR / "metar_dataframe.csv"
-
 # ============================================================
 # Configuration
 # ============================================================
