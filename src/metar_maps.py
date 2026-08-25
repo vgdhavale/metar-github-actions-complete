@@ -1583,13 +1583,13 @@ def main():
     
     #df.to_csv("output/metar_dataframe.csv", index=False)
 
-    plt.savefig("output/metar_station_observations.png")
-    plt.savefig("output/metar_pressure_contours.png")
-    plt.savefig("output/metar_temperature_contours.png")
-    plt.savefig("output/metar_dewpoint_contours.png")
-    plt.savefig("output/metar_wind_speed_barbs.png")
-    plt.savefig("output/metar_visibility.png")
-    plt.savefig("output/metar_current_weather.png")
+    plt.savefig("output/metar_station_observations.png",dpi=300,bbox_inches="tight")
+    plt.savefig("output/metar_pressure_contours.png",dpi=300,bbox_inches="tight")
+    plt.savefig("output/metar_temperature_contours.png",dpi=300,bbox_inches="tight")
+    plt.savefig("output/metar_dewpoint_contours.png",dpi=300,bbox_inches="tight")
+    plt.savefig("output/metar_wind_speed_barbs.png",dpi=300,bbox_inches="tight")
+    plt.savefig("output/metar_visibility.png",dpi=300,bbox_inches="tight")
+    plt.savefig("output/metar_current_weather.png",dpi=300,bbox_inches="tight")
     
 # Repeat for all other contour/weather plots...
 
