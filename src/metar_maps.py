@@ -1579,6 +1579,8 @@ def main():
     )
 
     print()
+    
+    df.to_csv("output/metar_dataframe.csv", index=False)
 
     plt.savefig("output/metar_station_observations.png")
     plt.savefig("output/metar_pressure_contours.png")
