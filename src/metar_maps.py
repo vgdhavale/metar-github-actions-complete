@@ -2,26 +2,28 @@
 """
 METAR scraper and Indian meteorological maps
 
-Outputs:
-    metar_dataframe.csv
-    metar_station_observations.png
-    metar_pressure_contours.png
-    metar_temperature_contours.png
-    metar_dewpoint_contours.png
-    metar_wind_speed_barbs.png
-    metar_visibility.png
-    metar_current_weather.png
+Outputs (all written to the 'output' folder):
+    output/metar_dataframe.csv
+    output/metar_station_observations.png
+    output/metar_pressure_contours.png
+    output/metar_temperature_contours.png
+    output/metar_dewpoint_contours.png
+    output/metar_wind_speed_barbs.png
+    output/metar_visibility.png
+    output/metar_current_weather.png
 """
 
+import os
 import re
 import warnings
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-import pandas as pd
 
 import numpy as np
 import pandas as pd
 import requests
+import matplotlib
+matplotlib.use("Agg")  # headless backend, required for GitHub Actions
 import matplotlib.pyplot as plt
 
 from scipy.interpolate import griddata
@@ -34,10 +36,19 @@ from metpy.plots import StationPlot, StationPlotLayout, sky_cover
 
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-import os
 
-# Create the output directory if it doesn't exist
-os.makedirs("output", exist_ok=True)
+# ============================================================
+# Output directory
+# ============================================================
+
+OUTPUT_DIR = "output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
+def out(name):
+    """Return a path inside the output folder."""
+    return os.path.join(OUTPUT_DIR, name)
+
 
 # ============================================================
 # Configuration
@@ -48,7 +59,7 @@ URL = (
     "nsweb/FlightBriefing/showmetars.php"
 )
 
-OUTPUT_CSV = "metar_dataframe.csv"
+OUTPUT_CSV = out("metar_dataframe.csv")
 
 MAP_EXTENT = [66.0, 100.0, 5.0, 38.0]
 PROJECTION = ccrs.PlateCarree()
@@ -215,7 +226,6 @@ STATION_COORDS = {
     "VERK": (22.2566, 84.8152, "Rourkela"),
     "VERW": (20.9167, 85.1333, "Angul"),
 }
-
 
 # ============================================================
 # Download and HTML processing
@@ -741,7 +751,7 @@ def plot_contour_field(
     MODIFIED: Plot actual station values without interpolation.
     Added ICAO station codes next to each point.
     """
-    
+
     columns = [
         "longitude",
         "latitude",
@@ -772,13 +782,13 @@ def plot_contour_field(
 
     # Get values for coloring
     values = valid[variable].to_numpy(dtype=float)
-    
+
     # Create scatter plot with actual values (NO INTERPOLATION)
     scatter = axes.scatter(
         valid["longitude"],
         valid["latitude"],
         c=values,
-        s=150,  # Larger markers for better visibility
+        s=150,
         cmap=cmap,
         alpha=0.85,
         edgecolors="black",
@@ -791,7 +801,7 @@ def plot_contour_field(
     for _, row in valid.iterrows():
         value = row[variable]
         station = row["station"]
-        
+
         # Value label
         axes.text(
             row["longitude"] + 0.15,
@@ -805,7 +815,7 @@ def plot_contour_field(
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
             zorder=6
         )
-        
+
         # ICAO code label
         axes.text(
             row["longitude"],
@@ -843,7 +853,6 @@ def plot_contour_field(
         bbox_inches="tight"
     )
 
-    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -858,7 +867,7 @@ def plot_wind_map(dataframe, output_file):
     MODIFIED: Plot actual wind values without interpolation.
     Added ICAO station codes next to each point.
     """
-    
+
     wind_data = dataframe[
         [
             "longitude",
@@ -891,7 +900,7 @@ def plot_wind_map(dataframe, output_file):
 
     # Get wind speed for coloring (NO INTERPOLATION)
     wind_speed = wind_data["wind_speed_kt"].to_numpy()
-    
+
     # Scatter plot colored by wind speed
     scatter = axes.scatter(
         wind_data["longitude"],
@@ -932,7 +941,7 @@ def plot_wind_map(dataframe, output_file):
     for _, row in wind_data.iterrows():
         speed = row["wind_speed_kt"]
         station = row["station"]
-        
+
         # Wind speed label
         axes.text(
             row["longitude"] + 0.15,
@@ -946,7 +955,7 @@ def plot_wind_map(dataframe, output_file):
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
             zorder=7
         )
-        
+
         # ICAO code label
         axes.text(
             row["longitude"],
@@ -984,7 +993,6 @@ def plot_wind_map(dataframe, output_file):
         bbox_inches="tight"
     )
 
-    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -999,7 +1007,7 @@ def plot_visibility_map(dataframe, output_file):
     NEW: Plot actual visibility values without interpolation.
     Added ICAO station codes next to each point.
     """
-    
+
     vis_data = dataframe[
         [
             "longitude",
@@ -1031,7 +1039,7 @@ def plot_visibility_map(dataframe, output_file):
 
     # Get visibility for coloring (NO INTERPOLATION)
     visibility = vis_data["visibility_m"].to_numpy()
-    
+
     # Scatter plot colored by visibility
     scatter = axes.scatter(
         vis_data["longitude"],
@@ -1050,13 +1058,13 @@ def plot_visibility_map(dataframe, output_file):
     for _, row in vis_data.iterrows():
         vis = row["visibility_m"]
         station = row["station"]
-        
+
         # Visibility label (in km if >= 1000m, else in m)
         if vis >= 1000:
             vis_text = f"{vis/1000:.1f}km"
         else:
             vis_text = f"{vis:.0f}m"
-        
+
         axes.text(
             row["longitude"] + 0.15,
             row["latitude"] + 0.10,
@@ -1069,7 +1077,7 @@ def plot_visibility_map(dataframe, output_file):
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
             zorder=6
         )
-        
+
         # ICAO code label
         axes.text(
             row["longitude"],
@@ -1117,7 +1125,6 @@ def plot_visibility_map(dataframe, output_file):
         bbox_inches="tight"
     )
 
-    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1266,7 +1273,6 @@ def plot_current_weather_map(dataframe, output_file):
         bbox_inches="tight"
     )
 
-    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1339,7 +1345,7 @@ def plot_station_observations(dataframe, output_file):
     """
     RESTORED: Original version without SE corner station names.
     """
-    
+
     dataframe = dataframe.dropna(
         subset=["latitude", "longitude"]
     ).copy()
@@ -1441,7 +1447,6 @@ def plot_station_observations(dataframe, output_file):
         bbox_inches="tight"
     )
 
-    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1522,7 +1527,7 @@ def main():
     # Station plot (RESTORED - no SE corner box)
     plot_station_observations(
         dataframe,
-        "metar_station_observations.png"
+        out("metar_station_observations.png")
     )
 
     # Pressure (ACTUAL VALUES + ICAO codes)
@@ -1531,7 +1536,7 @@ def main():
         variable="pressure_hPa",
         title="Mean Sea-Level Pressure",
         colorbar_label="Pressure (hPa)",
-        output_file="metar_pressure_contours.png",
+        output_file=out("metar_pressure_contours.png"),
         cmap="viridis",
         contour_levels=15,
         contour_format="%.0f"
@@ -1543,7 +1548,7 @@ def main():
         variable="temperature_C",
         title="Surface Temperature",
         colorbar_label="Temperature (°C)",
-        output_file="metar_temperature_contours.png",
+        output_file=out("metar_temperature_contours.png"),
         cmap="RdYlBu_r",
         contour_levels=15,
         contour_format="%.0f"
@@ -1555,7 +1560,7 @@ def main():
         variable="dew_point_C",
         title="Surface Dew-Point Temperature",
         colorbar_label="Dew point (°C)",
-        output_file="metar_dewpoint_contours.png",
+        output_file=out("metar_dewpoint_contours.png"),
         cmap="YlGnBu",
         contour_levels=15,
         contour_format="%.0f"
@@ -1564,36 +1569,22 @@ def main():
     # Wind-speed (ACTUAL VALUES + ICAO codes)
     plot_wind_map(
         dataframe,
-        "metar_wind_speed_barbs.png"
+        out("metar_wind_speed_barbs.png")
     )
 
     # Visibility (NEW MAP + ICAO codes)
     plot_visibility_map(
         dataframe,
-        "metar_visibility.png"
+        out("metar_visibility.png")
     )
 
     # Current-weather map
     plot_current_weather_map(
         dataframe,
-        "metar_current_weather.png"
+        out("metar_current_weather.png")
     )
 
     print()
-    
-    #df.to_csv("output/metar_dataframe.csv", index=False)
-
-    plt.savefig("output/metar_station_observations.png",dpi=300,bbox_inches="tight")
-    plt.savefig("output/metar_pressure_contours.png",dpi=300,bbox_inches="tight")
-    plt.savefig("output/metar_temperature_contours.png",dpi=300,bbox_inches="tight")
-    plt.savefig("output/metar_dewpoint_contours.png",dpi=300,bbox_inches="tight")
-    plt.savefig("output/metar_wind_speed_barbs.png",dpi=300,bbox_inches="tight")
-    plt.savefig("output/metar_visibility.png",dpi=300,bbox_inches="tight")
-    plt.savefig("output/metar_current_weather.png",dpi=300,bbox_inches="tight")
-    
-# Repeat for all other contour/weather plots...
-
-    
     print("All maps have been generated successfully.")
 
 
