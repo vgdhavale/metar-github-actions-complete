@@ -2,7 +2,7 @@ name: Update METAR maps
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "7 */2 * * *" # Runs every 2 hours at the start of the hour
   workflow_dispatch:
   push:
     branches: [main]
@@ -77,7 +77,7 @@ jobs:
           </head>
           <body>
             <h1>Indian METAR maps</h1>
-            <p>Updated every 30 minutes automatically.</p>
+            <p>Updated every 2 hours automatically.</p>
             <a href="metar_dataframe.csv" class="download-btn" download>📥 Download CSV Data File</a>
             <div id="maps-container"></div>
             <script>
