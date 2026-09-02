@@ -1,3 +1,26 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Sep  2 11:37:36 2026
+
+@author: Radio
+"""
+
+# -*- coding: utf-8 -*-
+"""
+METAR scraper and Indian meteorological maps
+
+Outputs (all saved to output/ folder):
+    metar_dataframe.csv
+    metar_station_observations.png
+    metar_pressure_contours.png
+    metar_temperature_contours.png
+    metar_dewpoint_contours.png
+    metar_wind_speed_barbs.png
+    metar_visibility.png
+    metar_relative_humidity.png
+    metar_current_weather.png
+"""
+
 import re
 import warnings
 from datetime import datetime, timezone
@@ -22,9 +45,6 @@ import geopandas as gpd
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 import os
 
-# Create the output directory if it doesn't exist
-os.makedirs("output", exist_ok=True)
-
 # ============================================================
 # Configuration
 # ============================================================
@@ -34,13 +54,25 @@ URL = (
     "nsweb/FlightBriefing/showmetars.php"
 )
 
-OUTPUT_CSV = "metar_dataframe.csv"
+# Output directory and file paths
+OUTPUT_DIR = "output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+OUTPUT_CSV = os.path.join(OUTPUT_DIR, "metar_dataframe.csv")
+OUTPUT_STATION_PLOT = os.path.join(OUTPUT_DIR, "metar_station_observations.png")
+OUTPUT_PRESSURE = os.path.join(OUTPUT_DIR, "metar_pressure_contours.png")
+OUTPUT_TEMPERATURE = os.path.join(OUTPUT_DIR, "metar_temperature_contours.png")
+OUTPUT_DEWPOINT = os.path.join(OUTPUT_DIR, "metar_dewpoint_contours.png")
+OUTPUT_WIND = os.path.join(OUTPUT_DIR, "metar_wind_speed_barbs.png")
+OUTPUT_VISIBILITY = os.path.join(OUTPUT_DIR, "metar_visibility.png")
+OUTPUT_RH = os.path.join(OUTPUT_DIR, "metar_relative_humidity.png")
+OUTPUT_WEATHER = os.path.join(OUTPUT_DIR, "metar_current_weather.png")
 
 MAP_EXTENT = [66.0, 100.0, 5.0, 38.0]
 PROJECTION = ccrs.PlateCarree()
 
 # Shapefile path for India boundaries
-INDIA_SHAPEFILE_PATH = r"src/india-polygon.shp"
+INDIA_SHAPEFILE_PATH = r"india-polygon.shp"
 
 
 # ============================================================
@@ -1712,7 +1744,7 @@ def main():
     # Station plot
     plot_station_observations(
         dataframe,
-        "metar_station_observations.png"
+        OUTPUT_STATION_PLOT
     )
 
     # Pressure (ACTUAL VALUES + ICAO codes)
@@ -1721,7 +1753,7 @@ def main():
         variable="pressure_hPa",
         title="Mean Sea-Level Pressure",
         colorbar_label="Pressure (hPa)",
-        output_file="metar_pressure_contours.png",
+        output_file=OUTPUT_PRESSURE,
         cmap="viridis",
         contour_levels=15,
         contour_format="%.0f"
@@ -1733,7 +1765,7 @@ def main():
         variable="temperature_C",
         title="Surface Temperature",
         colorbar_label="Temperature (°C)",
-        output_file="metar_temperature_contours.png",
+        output_file=OUTPUT_TEMPERATURE,
         cmap="RdYlBu_r",
         contour_levels=15,
         contour_format="%.0f"
@@ -1745,7 +1777,7 @@ def main():
         variable="dew_point_C",
         title="Surface Dew-Point Temperature",
         colorbar_label="Dew point (°C)",
-        output_file="metar_dewpoint_contours.png",
+        output_file=OUTPUT_DEWPOINT,
         cmap="YlGnBu",
         contour_levels=15,
         contour_format="%.0f"
@@ -1754,29 +1786,30 @@ def main():
     # Wind-speed (ACTUAL VALUES + ICAO codes)
     plot_wind_map(
         dataframe,
-        "metar_wind_speed_barbs.png"
+        OUTPUT_WIND
     )
 
     # Visibility (NEW MAP + ICAO codes)
     plot_visibility_map(
         dataframe,
-        "metar_visibility.png"
+        OUTPUT_VISIBILITY
     )
 
     # Relative Humidity (NEW MAP + ICAO codes)
     plot_relative_humidity_map(
         dataframe,
-        "metar_relative_humidity.png"
+        OUTPUT_RH
     )
 
     # Current-weather map
     plot_current_weather_map(
         dataframe,
-        "metar_current_weather.png"
+        OUTPUT_WEATHER
     )
 
     print()
     print("All maps have been generated successfully.")
+    print(f"All outputs saved to: {os.path.abspath(OUTPUT_DIR)}/")
 
 
 if __name__ == "__main__":
