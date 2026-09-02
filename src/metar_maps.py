@@ -72,7 +72,7 @@ MAP_EXTENT = [66.0, 100.0, 5.0, 38.0]
 PROJECTION = ccrs.PlateCarree()
 
 # Shapefile path for India boundaries
-INDIA_SHAPEFILE_PATH = r"india-polygon.shp"
+INDIA_SHAPEFILE_PATH = r"src/india-polygon.shp"
 
 
 # ============================================================
