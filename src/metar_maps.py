@@ -1,29 +1,12 @@
-# -*- coding: utf-8 -*-
-"""
-METAR scraper and Indian meteorological maps
-
-Outputs (all written to the 'output' folder):
-    output/metar_dataframe.csv
-    output/metar_station_observations.png
-    output/metar_pressure_contours.png
-    output/metar_temperature_contours.png
-    output/metar_dewpoint_contours.png
-    output/metar_wind_speed_barbs.png
-    output/metar_visibility.png
-    output/metar_current_weather.png
-"""
-
-import os
 import re
 import warnings
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+import pandas as pd
 
 import numpy as np
 import pandas as pd
 import requests
-import matplotlib
-matplotlib.use("Agg")  # headless backend, required for GitHub Actions
 import matplotlib.pyplot as plt
 
 from scipy.interpolate import griddata
@@ -34,21 +17,13 @@ import cartopy.feature as cfeature
 from metpy.units import units
 from metpy.plots import StationPlot, StationPlotLayout, sky_cover
 
+import geopandas as gpd
 
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+import os
 
-# ============================================================
-# Output directory
-# ============================================================
-
-OUTPUT_DIR = "output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-
-def out(name):
-    """Return a path inside the output folder."""
-    return os.path.join(OUTPUT_DIR, name)
-
+# Create the output directory if it doesn't exist
+os.makedirs("output", exist_ok=True)
 
 # ============================================================
 # Configuration
@@ -59,10 +34,13 @@ URL = (
     "nsweb/FlightBriefing/showmetars.php"
 )
 
-OUTPUT_CSV = out("metar_dataframe.csv")
+OUTPUT_CSV = "metar_dataframe.csv"
 
 MAP_EXTENT = [66.0, 100.0, 5.0, 38.0]
 PROJECTION = ccrs.PlateCarree()
+
+# Shapefile path for India boundaries
+INDIA_SHAPEFILE_PATH = r"india-polygon.shp"
 
 
 # ============================================================
@@ -226,6 +204,7 @@ STATION_COORDS = {
     "VERK": (22.2566, 84.8152, "Rourkela"),
     "VERW": (20.9167, 85.1333, "Angul"),
 }
+
 
 # ============================================================
 # Download and HTML processing
@@ -593,6 +572,19 @@ def get_ist_time():
     )
 
 
+def load_india_outline():
+    """Load and prepare India's boundary from shapefile."""
+    try:
+        map_df = gpd.read_file(INDIA_SHAPEFILE_PATH)
+        map_df['geometry'] = map_df['geometry'].buffer(0)
+        india_outline = map_df.dissolve()
+        return india_outline
+    except Exception as e:
+        print(f"Warning: Could not load shapefile: {e}")
+        print("Falling back to Cartopy features")
+        return None
+
+
 def add_map_background(axes):
     axes.set_extent(
         MAP_EXTENT,
@@ -652,6 +644,21 @@ def add_map_background(axes):
 
     gridlines.xlabel_style = {"size": 8}
     gridlines.ylabel_style = {"size": 8}
+
+
+def add_india_outline_to_axes(axes):
+    """Add India's boundary from shapefile to Cartopy axes."""
+    india_outline = load_india_outline()
+    
+    if india_outline is not None:
+        india_outline.plot(
+            ax=axes,
+            color='none',
+            edgecolor='black',
+            linewidth=1.5,
+            zorder=10,
+            transform=PROJECTION
+        )
 
 
 def get_interpolation_grid(
@@ -734,6 +741,37 @@ def get_interpolation_grid(
 
 
 # ============================================================
+# Relative humidity calculation
+# ============================================================
+
+def calculate_relative_humidity(temperature_c, dew_point_c):
+    """
+    Calculate relative humidity from temperature and dew point
+    using the August-Roche-Magnus approximation.
+    
+    RH = 100 * exp((17.625 * Td) / (243.04 + Td)) / exp((17.625 * T) / (243.04 + T))
+    
+    where T is temperature in °C and Td is dew point in °C
+    """
+    if pd.isna(temperature_c) or pd.isna(dew_point_c):
+        return np.nan
+    
+    # Avoid division by zero or invalid values
+    if (243.04 + temperature_c) == 0 or (243.04 + dew_point_c) == 0:
+        return np.nan
+    
+    numerator = np.exp((17.625 * dew_point_c) / (243.04 + dew_point_c))
+    denominator = np.exp((17.625 * temperature_c) / (243.04 + temperature_c))
+    
+    rh = 100.0 * (numerator / denominator)
+    
+    # Clamp to valid range
+    rh = np.clip(rh, 0.0, 100.0)
+    
+    return rh
+
+
+# ============================================================
 # Scalar contour maps (NO INTERPOLATION - ACTUAL VALUES)
 # ============================================================
 
@@ -751,7 +789,7 @@ def plot_contour_field(
     MODIFIED: Plot actual station values without interpolation.
     Added ICAO station codes next to each point.
     """
-
+    
     columns = [
         "longitude",
         "latitude",
@@ -779,16 +817,17 @@ def plot_contour_field(
     )
 
     add_map_background(axes)
+    add_india_outline_to_axes(axes)
 
     # Get values for coloring
     values = valid[variable].to_numpy(dtype=float)
-
+    
     # Create scatter plot with actual values (NO INTERPOLATION)
     scatter = axes.scatter(
         valid["longitude"],
         valid["latitude"],
         c=values,
-        s=150,
+        s=150,  # Larger markers for better visibility
         cmap=cmap,
         alpha=0.85,
         edgecolors="black",
@@ -801,7 +840,7 @@ def plot_contour_field(
     for _, row in valid.iterrows():
         value = row[variable]
         station = row["station"]
-
+        
         # Value label
         axes.text(
             row["longitude"] + 0.15,
@@ -815,7 +854,7 @@ def plot_contour_field(
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
             zorder=6
         )
-
+        
         # ICAO code label
         axes.text(
             row["longitude"],
@@ -853,6 +892,7 @@ def plot_contour_field(
         bbox_inches="tight"
     )
 
+    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -867,7 +907,7 @@ def plot_wind_map(dataframe, output_file):
     MODIFIED: Plot actual wind values without interpolation.
     Added ICAO station codes next to each point.
     """
-
+    
     wind_data = dataframe[
         [
             "longitude",
@@ -897,10 +937,11 @@ def plot_wind_map(dataframe, output_file):
     )
 
     add_map_background(axes)
+    add_india_outline_to_axes(axes)
 
     # Get wind speed for coloring (NO INTERPOLATION)
     wind_speed = wind_data["wind_speed_kt"].to_numpy()
-
+    
     # Scatter plot colored by wind speed
     scatter = axes.scatter(
         wind_data["longitude"],
@@ -941,7 +982,7 @@ def plot_wind_map(dataframe, output_file):
     for _, row in wind_data.iterrows():
         speed = row["wind_speed_kt"]
         station = row["station"]
-
+        
         # Wind speed label
         axes.text(
             row["longitude"] + 0.15,
@@ -955,7 +996,7 @@ def plot_wind_map(dataframe, output_file):
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
             zorder=7
         )
-
+        
         # ICAO code label
         axes.text(
             row["longitude"],
@@ -993,6 +1034,7 @@ def plot_wind_map(dataframe, output_file):
         bbox_inches="tight"
     )
 
+    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1007,7 +1049,7 @@ def plot_visibility_map(dataframe, output_file):
     NEW: Plot actual visibility values without interpolation.
     Added ICAO station codes next to each point.
     """
-
+    
     vis_data = dataframe[
         [
             "longitude",
@@ -1036,10 +1078,11 @@ def plot_visibility_map(dataframe, output_file):
     )
 
     add_map_background(axes)
+    add_india_outline_to_axes(axes)
 
     # Get visibility for coloring (NO INTERPOLATION)
     visibility = vis_data["visibility_m"].to_numpy()
-
+    
     # Scatter plot colored by visibility
     scatter = axes.scatter(
         vis_data["longitude"],
@@ -1058,13 +1101,13 @@ def plot_visibility_map(dataframe, output_file):
     for _, row in vis_data.iterrows():
         vis = row["visibility_m"]
         station = row["station"]
-
+        
         # Visibility label (in km if >= 1000m, else in m)
         if vis >= 1000:
             vis_text = f"{vis/1000:.1f}km"
         else:
             vis_text = f"{vis:.0f}m"
-
+        
         axes.text(
             row["longitude"] + 0.15,
             row["latitude"] + 0.10,
@@ -1077,7 +1120,7 @@ def plot_visibility_map(dataframe, output_file):
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
             zorder=6
         )
-
+        
         # ICAO code label
         axes.text(
             row["longitude"],
@@ -1125,6 +1168,7 @@ def plot_visibility_map(dataframe, output_file):
         bbox_inches="tight"
     )
 
+    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1208,6 +1252,7 @@ def plot_current_weather_map(dataframe, output_file):
     )
 
     add_map_background(axes)
+    add_india_outline_to_axes(axes)
 
     for category, color in category_colors.items():
 
@@ -1273,6 +1318,144 @@ def plot_current_weather_map(dataframe, output_file):
         bbox_inches="tight"
     )
 
+    plt.show()
+    plt.close(figure)
+
+    print(f"Saved: {output_file}")
+
+
+# ============================================================
+# Relative humidity map (NEW)
+# ============================================================
+
+def plot_relative_humidity_map(dataframe, output_file):
+    """
+    NEW: Plot relative humidity calculated from temperature and dew point.
+    Added ICAO station codes next to each point.
+    """
+    
+    # Calculate relative humidity for each station
+    rh_data = dataframe[
+        [
+            "longitude",
+            "latitude",
+            "temperature_C",
+            "dew_point_C",
+            "station"
+        ]
+    ].copy()
+
+    # Calculate RH using the Magnus formula
+    rh_data["relative_humidity"] = rh_data.apply(
+        lambda row: calculate_relative_humidity(
+            row["temperature_C"],
+            row["dew_point_C"]
+        ),
+        axis=1
+    )
+
+    # Drop rows with NaN RH values
+    rh_data = rh_data.dropna(
+        subset=["longitude", "latitude", "relative_humidity"]
+    ).copy()
+
+    rh_data = rh_data.drop_duplicates(
+        subset=["longitude", "latitude"]
+    )
+
+    if len(rh_data) < 3:
+        raise ValueError(
+            "At least three stations with valid temperature "
+            "and dew point data are required for RH calculation."
+        )
+
+    figure = plt.figure(
+        figsize=(15, 11)
+    )
+
+    axes = plt.axes(
+        projection=PROJECTION
+    )
+
+    add_map_background(axes)
+    add_india_outline_to_axes(axes)
+
+    # Get RH for coloring (NO INTERPOLATION)
+    rh_values = rh_data["relative_humidity"].to_numpy()
+    
+    # Scatter plot colored by relative humidity
+    scatter = axes.scatter(
+        rh_data["longitude"],
+        rh_data["latitude"],
+        c=rh_values,
+        s=140,
+        cmap="YlGnBu_r",  # Reversed: blue=high humidity, yellow=low
+        vmin=0,
+        vmax=100,
+        alpha=0.82,
+        edgecolors="black",
+        linewidths=0.5,
+        transform=PROJECTION,
+        zorder=5
+    )
+
+    # Add RH labels and ICAO codes
+    for _, row in rh_data.iterrows():
+        rh = row["relative_humidity"]
+        station = row["station"]
+        
+        # RH label
+        axes.text(
+            row["longitude"] + 0.15,
+            row["latitude"] + 0.10,
+            f"{rh:.0f}%",
+            transform=PROJECTION,
+            fontsize=7,
+            ha="left",
+            va="bottom",
+            color="black",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
+            zorder=6
+        )
+        
+        # ICAO code label
+        axes.text(
+            row["longitude"],
+            row["latitude"] - 0.25,
+            station,
+            transform=PROJECTION,
+            fontsize=6,
+            ha="center",
+            va="top",
+            color="black",
+            zorder=6
+        )
+
+    colorbar = figure.colorbar(
+        scatter,
+        ax=axes,
+        pad=0.02,
+        shrink=0.85
+    )
+
+    colorbar.set_label("Relative Humidity (%)")
+
+    current_time = get_ist_time()
+
+    axes.set_title(
+        f"Indian METAR Relative Humidity (Calculated from T and Td)\n"
+        f"METAR observations: "
+        f"{current_time:%Y-%m-%d %H:%M} IST",
+        fontsize=13
+    )
+
+    figure.savefig(
+        output_file,
+        dpi=220,
+        bbox_inches="tight"
+    )
+
+    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1345,7 +1528,7 @@ def plot_station_observations(dataframe, output_file):
     """
     RESTORED: Original version without SE corner station names.
     """
-
+    
     dataframe = dataframe.dropna(
         subset=["latitude", "longitude"]
     ).copy()
@@ -1366,6 +1549,7 @@ def plot_station_observations(dataframe, output_file):
     )
 
     add_map_background(axes)
+    add_india_outline_to_axes(axes)
 
     layout = StationPlotLayout()
 
@@ -1447,6 +1631,7 @@ def plot_station_observations(dataframe, output_file):
         bbox_inches="tight"
     )
 
+    plt.show()
     plt.close(figure)
 
     print(f"Saved: {output_file}")
@@ -1524,10 +1709,10 @@ def main():
     print()
     print(f"CSV saved as: {OUTPUT_CSV}")
 
-    # Station plot (RESTORED - no SE corner box)
+    # Station plot
     plot_station_observations(
         dataframe,
-        out("metar_station_observations.png")
+        "metar_station_observations.png"
     )
 
     # Pressure (ACTUAL VALUES + ICAO codes)
@@ -1536,7 +1721,7 @@ def main():
         variable="pressure_hPa",
         title="Mean Sea-Level Pressure",
         colorbar_label="Pressure (hPa)",
-        output_file=out("metar_pressure_contours.png"),
+        output_file="metar_pressure_contours.png",
         cmap="viridis",
         contour_levels=15,
         contour_format="%.0f"
@@ -1548,7 +1733,7 @@ def main():
         variable="temperature_C",
         title="Surface Temperature",
         colorbar_label="Temperature (°C)",
-        output_file=out("metar_temperature_contours.png"),
+        output_file="metar_temperature_contours.png",
         cmap="RdYlBu_r",
         contour_levels=15,
         contour_format="%.0f"
@@ -1560,7 +1745,7 @@ def main():
         variable="dew_point_C",
         title="Surface Dew-Point Temperature",
         colorbar_label="Dew point (°C)",
-        output_file=out("metar_dewpoint_contours.png"),
+        output_file="metar_dewpoint_contours.png",
         cmap="YlGnBu",
         contour_levels=15,
         contour_format="%.0f"
@@ -1569,19 +1754,25 @@ def main():
     # Wind-speed (ACTUAL VALUES + ICAO codes)
     plot_wind_map(
         dataframe,
-        out("metar_wind_speed_barbs.png")
+        "metar_wind_speed_barbs.png"
     )
 
     # Visibility (NEW MAP + ICAO codes)
     plot_visibility_map(
         dataframe,
-        out("metar_visibility.png")
+        "metar_visibility.png"
+    )
+
+    # Relative Humidity (NEW MAP + ICAO codes)
+    plot_relative_humidity_map(
+        dataframe,
+        "metar_relative_humidity.png"
     )
 
     # Current-weather map
     plot_current_weather_map(
         dataframe,
-        out("metar_current_weather.png")
+        "metar_current_weather.png"
     )
 
     print()
